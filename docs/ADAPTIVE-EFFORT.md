@@ -39,8 +39,14 @@ Identical in both seats. Only the nouns change.
 |---|---|---|
 | **U — uniform** | the same effort on every step | what ships today |
 | **R — rule** | a hand-tuned threshold on an observable proxy | the dumb baseline, and a strong one |
-| **C — calibrated** | threshold on `P(safe)` / `P(easy)` | the thing under test |
+| **C — calibrated probe** | threshold on `P(safe)` / `P(easy)`, from a head on **frozen** features | is the signal there at all? |
+| **P — post-trained** | the same probability, from a head **trained into the generator** on its own failures | does teaching the model to judge itself buy anything? |
 | **O — oracle** | knows the true difficulty | the ceiling |
+
+**The comparison that matters is C → P.** C asks whether a usable signal exists anywhere in
+the frozen system. P asks whether post-training the generator to assess itself beats reading
+it from outside. Both answers are worth having: if P >> C, post-training earns its cost; if
+P ~ C, a cheap external probe suffices and that is the deployable result.
 
 R is not a strawman in either seat. Seat 1's R is Argon's deployed rule. Seat 2's R is a
 step counter, which [amendment 6](../PREDICTIONS.md) found beats every internal signal the
@@ -61,6 +67,25 @@ unchanged and C must collapse to R. If C keeps an advantage, the fit leaked the 
 **Noise floor first.** No small difference is claimed before the repeat-run spread of each
 metric is measured and published.
 
+## Why post-training is affordable here: the labels are free
+
+Arm P needs supervision, and in both seats the system produces it by failing.
+
+| seat | one label is | produced by |
+|---|---|---|
+| 1 | a skip that turned out unsafe | running the bench |
+| 2 | a frame that left the noise-floor band | running the harness |
+
+No annotation, no collected dataset, no human in the loop. **The generator labels itself by
+being wrong**, and the head is trained on that record. This is the sibling repo's "every
+takeover is a free label," restated for effort allocation rather than for handoff — and it
+is the only reason arm P fits inside a three-day budget at all.
+
+The arc is identical in both seats, and it is the arc of RLCD:
+
+> the generator cannot judge itself -> collect its own failures -> post-train a head on that
+> record -> gate on the head's calibrated output.
+
 ## Seat 1 — the skip gate
 
 *Benches already exist; this adds one arm to infrastructure built for RLCD.*
@@ -71,7 +96,10 @@ metric is measured and published.
 - **Risk event:** unsafe action — contact with the person, a wrong hand-over, a dropped item.
 - **R:** Argon's two-threshold displacement rule, transposed to the bench's units: one
   threshold for the clean scene, a tighter one when a person is present.
-- **C:** one calibrated `P(safe to skip)`, **one threshold for both scenes.**
+- **C:** one calibrated `P(safe to skip)` read from frozen features, **one threshold for
+  both scenes.**
+- **P:** the same probability from a head post-trained on the bench's own unsafe skips —
+  the 421M-owned-copy recipe from RLCD, pointed at skip safety instead of handoff.
 
 **Headline question.** Argon needed two numbers because one did not transfer between scene
 types. Does a single calibrated threshold match both hand-tuned ones, with no per-scene
@@ -93,10 +121,15 @@ over a tuned constant.
 reallocate and seat 2 is dead** — report it and stop. This is deliberately the cheapest
 possible way to kill the seat, and it runs before anything is built.
 
-**Why this is the post-training piece.** Amendment 6 found the model carries no internal
-signal about its own error. The response is not "so nothing works" — it is *teach it*.
-The head is trained on the model's own failures, which is the sibling repo's arc exactly:
-a model that cannot judge itself, corrected from its own record until it can.
+**Arm P here is a head fine-tuned into the denoiser**, trained on divergence labels the
+existing harness already emits. Amendment 6 found the model carries no internal signal about
+its own error. The response is not "so nothing works" — it is *teach it*.
+
+**Cost asymmetry, stated plainly.** Seat 1's arm P is cheaper: the distillation recipe
+already exists in RLCD, the benches are simulated, and labels are generated in minutes.
+Seat 2's arm P means fine-tuning a diffusion denoiser, which is heavier. So **seat 1 is the
+faster route to a post-training result, and seat 2 is the one that says "world model" on the
+tin.** That trade, not the science, is what decides which seat runs first.
 
 ## What would falsify the unification itself
 
@@ -119,6 +152,8 @@ does not.
 | benches / harness | exist (RLCD) | built, CPU-verified, unrun |
 | pre-registration | to write | P1–P10 registered |
 | pilot | none | amendments 6 and 7 |
+| arm P cost | low — recipe exists, sim labels | higher — denoiser fine-tune |
+| audience | Reflex, Fauna | General Intuition |
 | blocking step | none — bench time | the feasibility gate above |
 
 One seat is taken to completion first. The other stays specced and public, so the line
