@@ -235,3 +235,56 @@ If that is what the data shows, it is the world-model analogue of the owned copy
 sibling repo: blind off its own distribution and increasingly sure about it. That would be
 a result, not a failed experiment, and it would argue that a trust signal has to come from
 somewhere other than the model's own agreement with itself.
+
+### 2026-09-24 — amendment 6: a CPU pilot falsifies the premise of P3–P5
+
+Run before any GPU time, on CPU, to check the instrument had dynamic range. It does not.
+Reported here because the pilot changes the experiment, and a design changed after seeing
+data must say so in the open.
+
+**Pilot 1 — sample spread does not exist.** Four rollouts from identical conditioning,
+Breakout, t0 = 20, 8 steps. Mean sample spread **0.0002–0.0004** against a mean error
+versus the real emulator of **0.0073**: the signal is 2–6 % of the quantity it is meant
+to predict. Sweeping `s_churn` from 0.0 to 2.0 and denoising steps from 3 to 10 moves
+spread from .00023 to at most .00043. DIAMOND's denoiser collapses whatever latent it is
+given, so the sampler is effectively deterministic and **P3 and P4 have no signal to
+measure**.
+
+**Pilot 2 — no cheap internal signal beats a step counter.** Three seeds x 25 steps
+(n = 75), Breakout, correlation with per-step error against the real emulator:
+
+| signal | corr with error | p10 -> p90 |
+|---|---|---|
+| denoiser residual (last denoising step) | -0.178 | .00280 -> .00330 |
+| end-head entropy | -0.019 | 0 -> 0 |
+| reward-head entropy | 0.259 | 0 -> 0 |
+| model's own frame-to-frame delta | 0.110 | .0208 -> .0606 |
+| **step index** | **0.458** | 3 -> 23 |
+
+Both `rew_end_model` heads are saturated at zero entropy over this horizon on this game —
+expected, since Breakout rewards and terminations are rare here, but it means they carry
+no usable signal in this regime. Every internal signal tested is flat, and **the single
+best predictor of how wrong the model is, is how many steps it has dreamed.**
+
+**What this does to the claim.** A fixed horizon *is* a step counter. If nothing beats a
+step counter, the field's frozen constant is not a strawman — it is close to the best
+available rule, and the README's framing is wrong in a way that matters.
+
+**Caveats, so this is not over-read.** One game, n = 75, 25 steps, three seeds, no noise
+floor applied yet. Correlation with raw error is not the pre-registered quantity, which is
+the divergence step relative to the floor. Error grows with step, so *any* monotone
+function of step correlates somewhat. This is a feasibility check on the instrument, not
+a test of P1–P6.
+
+**Consequence, recorded before the next run.** P1, P2 and P6 are unaffected and stand as
+written. P3, P4 and P5 are retained unchanged so their failure is on the record, and the
+experiment gains a fourth arm and a harder baseline:
+
+> **The step counter is promoted from "the thing we are beating" to the dumb baseline any
+> signal must beat.** A signal that predicts divergence no better than "how long have I
+> been dreaming" is worthless, because that is what H already encodes. Arms become:
+> step counter (baseline) · internal signals (pilot says flat) · an external probe trained
+> on conditioning features · oracle.
+
+The external probe is the fallback named in amendment 5 and is now the load-bearing arm
+rather than a contingency.
