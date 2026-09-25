@@ -153,7 +153,6 @@ does not.
 | pre-registration | to write | P1–P10 registered |
 | pilot | none | amendments 6 and 7 |
 | arm P cost | low — recipe exists, sim labels | higher — denoiser fine-tune |
-| audience | Reflex, Fauna | General Intuition |
 | blocking step | none — bench time | the feasibility gate above |
 
 One seat is taken to completion first. The other stays specced and public, so the line
