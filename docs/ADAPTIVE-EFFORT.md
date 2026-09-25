@@ -157,3 +157,56 @@ does not.
 
 One seat is taken to completion first. The other stays specced and public, so the line
 reads as one programme with an arm outstanding rather than two projects that drifted.
+
+## Three constraints from the sibling programme
+
+Added 2026-09-25 from results in the human–robot seat. Each one would have invalidated a
+headline number here if it had been discovered after the runs instead of before.
+
+### 1. Arm P must be scored on a bank its corrections never touched
+
+Post-training a head on correction data makes its probability honest **where you corrected
+and dishonest where you did not**. Measured in the sibling repo: calibration error went
+.362 → .008 on corrected lines and .307 → **.399** on an untouched bank over the same six
+rounds, while the operator's veto window fell from rescuing 34 of 60 lines to rescuing 0.
+
+This attacks seat 1 at exactly its claim. If arm P is post-trained on one scene type's
+unsafe skips, it will look excellent there and fail quietly on a scene type it never saw —
+which is the *transfer* the experiment exists to demonstrate.
+
+> **Required in both seats:** every round scores a held-out bank the corrections never
+> touched, and that bank's calibration is reported beside the corrected one. A falling
+> failure rate on covered states is not evidence the gate transfers.
+
+### 2. The label form is a design variable, not a property of the model
+
+Same correction records, three ways of writing down what the operator did, scored on 60
+lines the corrections never touched: a head trained on the operator's **replacement action**
+rescued **+0**; trained to **ask**, +3; trained on **vetoes**, **+14**, and with the best
+calibration of the three (.261 against .376), at about 24 operator seconds per line.
+
+So arm P's survivability off-distribution is something the experiment *chooses*. Seat 1
+trains on vetoes — a veto is the natural label for "that skip was not safe" anyway. Seat 2's
+analogue is to label on *the frame that broke*, not on the corrected continuation.
+
+### 3. Every speed comparison must be paired
+
+A 2.3x speed-up in the sibling programme evaporated under pairing: failures are the
+expensive episodes, **122 s against 25 s**, so an unpaired mean measures the failure rate
+rather than the decision speed. Logged there as method error 53.
+
+The arms here will have different success rates by construction, so the same trap is live.
+
+> **Required:** speed and effort comparisons are paired on episodes *both* arms completed
+> successfully. The unpaired average is reported separately and labelled a fleet cost, never
+> as the speed result.
+
+This tightens the "matched budget" rule stated above, which was necessary but not sufficient.
+
+## A prior that is not a finding
+
+Seat 1's bench assumes a teleop-to-autonomy fleet where one operator supervises several
+robots and the handoff decision is the commercial product. **That assumption comes from
+public job postings and the shape of the field, not from any verified source.** It is a
+prior. Nothing in this spec should be read as a claim about how any particular company
+operates, and the bench must not inherit it as fact.
