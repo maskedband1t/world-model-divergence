@@ -120,6 +120,8 @@ def cmd_diverge(args: argparse.Namespace) -> None:
     T = loaded.num_steps_conditioning
 
     rows: list[dict] = []
+    embeds: list[np.ndarray] = []
+    embed_index: list[tuple] = []
     skipped = 0
     for seed in range(args.seeds):
         # seed 1000+seed matches the control run's pilot, so both are measured on the
@@ -137,14 +139,35 @@ def cmd_diverge(args: argparse.Namespace) -> None:
         future_act = real.act[t0 : t0 + args.horizon]
         target = real.obs[t0 + 1 : t0 + 1 + args.horizon]
 
+        # actor-critic state at t0, carried into the dream so the auditor's recurrent
+        # state reflects the real burn-in rather than restarting from zeros
+        init_hx_cx = None
+        if real.hx is not None and real.hx.shape[0] > t0 - 1:
+            init_hx_cx = (real.hx[t0 - 1], real.cx[t0 - 1])
+
         samples = []
         for s in range(args.num_samples):
-            pred = rollout_world_model(
+            pred, feats = rollout_world_model(
                 loaded, init_obs, init_act, future_act,
                 num_steps_denoising=args.denoising_steps,
                 seed=10_000 * seed + s,
+                init_hx_cx=init_hx_cx,
+                probe_features=not args.no_probe,
             )
             samples.append(pred)
+            if feats is not None:
+                embeds.append(np.asarray(feats["embed"], dtype=np.float32))
+                embed_index.append((seed, s))
+                for k in range(len(feats["pi_entropy"])):
+                    rows.append({
+                        "run": "probe", "game": args.game, "seed": seed, "sample": s,
+                        "step": k + 1,
+                        "pi_entropy": feats["pi_entropy"][k],
+                        "value": feats["value"][k],
+                        "delta": feats["delta"][k],
+                        "pix_mean": feats["pix_mean"][k],
+                        "pix_std": feats["pix_std"][k],
+                    })
             l2, lp = dist(pred, target)
             for k in range(len(l2)):
                 rows.append({
@@ -172,9 +195,19 @@ def cmd_diverge(args: argparse.Namespace) -> None:
          "burnin": args.burnin, "horizon": args.horizon, "seeds": args.seeds,
          "num_samples": args.num_samples, "denoising_steps": args.denoising_steps,
          "num_steps_conditioning": T, "seeds_skipped": skipped,
+         "probe_features": not args.no_probe,
          **provenance(Path(args.diamond_root))},
         rows,
     )
+
+    if embeds:
+        out_npz = Path(args.out) / f"embed_{args.game}.npz"
+        np.savez_compressed(
+            out_npz,
+            embed=np.stack(embeds),                              # (n_rollouts, H, C)
+            index=np.asarray(embed_index, dtype=np.int64),       # (n_rollouts, 2) seed, sample
+        )
+        print(f"wrote embeddings {np.stack(embeds).shape} -> {out_npz}")
 
 
 # --------------------------------------------------------------------------------------
@@ -197,6 +230,8 @@ def main() -> None:
         else:
             s.add_argument("--num-samples", type=int, default=8, help="independent WM rollouts per seed")
             s.add_argument("--denoising-steps", type=int, default=3, help="DIAMOND's Atari default")
+            s.add_argument("--no-probe", action="store_true",
+                           help="skip Arm B features (docs/PROBE.md); they are nearly free, so this is for debugging only")
         s.set_defaults(func=fn)
 
     args = p.parse_args()

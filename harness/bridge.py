@@ -152,6 +152,8 @@ class RealRollout:
     obs: Tensor          # (T+1, 3, 64, 64) in [-1, 1]; obs[i] is the frame BEFORE act[i]
     act: Tensor          # (T,) long
     ended_at: Optional[int]  # step index where the episode died, else None
+    hx: Optional[Tensor] = None  # (T, lstm_dim) actor-critic state AFTER seeing obs[i]
+    cx: Optional[Tensor] = None  # only populated when the policy acted (actions=None)
 
 
 @torch.no_grad()
@@ -179,12 +181,16 @@ def rollout_real(
 
     obs_log: List[Tensor] = [obs[0].cpu().clone()]
     act_log: List[int] = []
+    hx_log: List[Tensor] = []
+    cx_log: List[Tensor] = []
     ended_at: Optional[int] = None
 
     for t in range(steps):
         if actions is None:
             logits, _, (hx, cx) = loaded.agent.actor_critic.predict_act_value(obs, (hx, cx))
             act = torch.distributions.Categorical(logits=logits).sample()
+            hx_log.append(hx[0].cpu().clone())
+            cx_log.append(cx[0].cpu().clone())
         else:
             act = actions[t].view(1).to(loaded.device)
 
@@ -201,6 +207,8 @@ def rollout_real(
         obs=torch.stack(obs_log),
         act=torch.tensor(act_log, dtype=torch.long),
         ended_at=ended_at,
+        hx=torch.stack(hx_log) if hx_log else None,
+        cx=torch.stack(cx_log) if cx_log else None,
     )
 
 
@@ -212,10 +220,21 @@ def rollout_world_model(
     future_act: Tensor,   # (H,) the actions the real env took from t0 onward
     num_steps_denoising: int,
     seed: int,
-) -> Tensor:
+    init_hx_cx: Optional[Tuple[Tensor, Tensor]] = None,
+    probe_features: bool = False,
+) -> Tuple[Tensor, Optional[dict]]:
     """Predict H frames from the world model under a GIVEN action sequence.
 
-    Returns (H, 3, 64, 64). Frame k is the model's prediction of real obs[t0 + 1 + k].
+    Returns ((H, 3, 64, 64), features). Frame k predicts real obs[t0 + 1 + k].
+
+    With probe_features=True, also returns Arm B's inputs (docs/PROBE.md), computed
+    ONLY from what a deployed system has at step k: its own generated frames and the
+    actions. Never the real frames, never the label.
+
+    The actor-critic is carried forward from the real burn-in via init_hx_cx, so its
+    recurrent state reflects the trajectory rather than restarting from zeros. It was
+    trained on real frames, which is the whole point -- it is the auditor, not the
+    generator (amendment 6).
     """
     from models.diffusion import DiffusionSampler, DiffusionSamplerConfig  # noqa: E402
 
@@ -236,19 +255,42 @@ def rollout_world_model(
     obs_buf = init_obs.unsqueeze(0).to(loaded.device).clone()   # (1, T, 3, 64, 64)
     act_buf = init_act.unsqueeze(0).to(loaded.device).clone()   # (1, T)
 
+    ac = loaded.agent.actor_critic
+    if probe_features:
+        if init_hx_cx is None:
+            hx = torch.zeros(1, ac.lstm_dim, device=loaded.device)
+            cx = torch.zeros_like(hx)
+        else:
+            hx = init_hx_cx[0].view(1, -1).to(loaded.device).clone()
+            cx = init_hx_cx[1].view(1, -1).to(loaded.device).clone()
+    feats: dict = {"pi_entropy": [], "value": [], "delta": [],
+                   "pix_mean": [], "pix_std": [], "embed": []}
+
     out: List[Tensor] = []
     H = future_act.numel()
     for k in range(H):
+        prev_frame = obs_buf[:, -1].clone()
         # act_buffer[:, -1] is the action taken FROM the newest frame (WorldModelEnv.step)
         act_buf[:, -1] = future_act[k].to(loaded.device)
         next_obs, _ = sampler.sample(obs_buf, act_buf)
         out.append(next_obs[0].cpu().clone())
 
+        if probe_features:
+            logits, val, (hx, cx) = ac.predict_act_value(next_obs, (hx, cx))
+            ent = torch.distributions.Categorical(logits=logits).entropy()
+            emb = ac.encoder(next_obs).mean(dim=(2, 3))  # (1, C) channel means
+            feats["pi_entropy"].append(float(ent.item()))
+            feats["value"].append(float(val.item()))
+            feats["delta"].append(float((next_obs - prev_frame).flatten(1).pow(2).mean(1).sqrt().item()))
+            feats["pix_mean"].append(float(next_obs.mean().item()))
+            feats["pix_std"].append(float(next_obs.std().item()))
+            feats["embed"].append(emb[0].cpu().numpy())
+
         obs_buf = obs_buf.roll(-1, dims=1)
         act_buf = act_buf.roll(-1, dims=1)
         obs_buf[:, -1] = next_obs
 
-    return torch.stack(out)
+    return torch.stack(out), (feats if probe_features else None)
 
 
 # --------------------------------------------------------------------------------------

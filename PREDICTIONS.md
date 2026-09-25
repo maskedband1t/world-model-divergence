@@ -315,3 +315,31 @@ which strictly nests A. Confidence in brackets is mine before seeing data.
 content while preserving the clock. Arm A must be unchanged; Arm B must collapse to Arm A.
 If B retains an advantage under the shuffle, the fit leaked the clock and **every P8–P10
 number is void and reported as void**, not quietly refitted.
+
+### 2026-09-24 — amendment 7: the probe's inputs have dynamic range (pilot, CPU)
+
+Feature logging smoke-tested on CPU, Breakout, 6 steps, 2 samples. Not a test of P7–P10;
+a check that Arm B has anything to fit on at all, after amendment 6 found every internal
+signal flat.
+
+| feature | range over 6 steps | verdict |
+|---|---|---|
+| **policy entropy** | 0.017 → 0.731 | wide. ~40x the range of the best internal signal |
+| actor-critic embedding | per-step std 0.108 (mean over 64 channels) | substantial |
+| model frame delta | 0.0203 → 0.0619 | usable |
+| critic value | 1.518 → 1.656 | narrow, and **monotone in k** |
+| pixel mean / std | −0.6816 → −0.6824 | flat. The dumb features are dumb, as expected |
+
+The auditor hypothesis survives its first check: a network trained on **real** frames
+reacts to generated ones in a way the generator's own internals do not.
+
+**A warning recorded now, not after the fit.** Critic value rose monotonically across all
+six steps. A feature that is monotone in k is, to a logistic head, a noisy copy of the
+clock — it can buy Arm B an advantage that is really Arm A's. This is precisely what the
+permutation control in `docs/PROBE.md` exists to catch, and it is now an expected
+failure mode rather than a hypothetical one. If Arm B's advantage does not survive
+shuffling labels within step index, it is reported as void.
+
+Sample-to-sample variation in every feature was ~1e-4, consistent with amendment 6: the
+sampler is deterministic, so averaging features across samples buys nothing and
+`--num-samples` can be 1 for probe purposes.
