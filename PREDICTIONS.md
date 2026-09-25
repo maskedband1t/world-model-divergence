@@ -288,3 +288,30 @@ experiment gains a fourth arm and a harder baseline:
 
 The external probe is the fallback named in amendment 5 and is now the load-bearing arm
 rather than a contingency.
+
+### 2026-09-24 — P7–P10, the external probe arm
+
+Registered after amendment 6 and before any probe exists. Design in `docs/PROBE.md`.
+Arm A = `P(faithful | k)`, the best possible fixed horizon. Arm B = `P(faithful | k, content)`,
+which strictly nests A. Confidence in brackets is mine before seeing data.
+
+- **P7 — A tuned horizon beats the shipped one.** [0.7] Arm A yields more faithful frames
+  than fixed H = 50 at equal average budget, in at least two of four games. This is the
+  price of an untuned constant and is the *only* gap the original design could have shown.
+
+- **P8 — Content does not beat the clock.** [0.65 that B − A is within noise]
+  Arm B improves AUROC over Arm A by less than 0.05, pooled. Stated in the direction the
+  pilot predicts, so a win is a surprise and a loss is not a rescue.
+
+- **P9 — If B beats A anywhere, policy entropy or critic value carries it, not pixel
+  statistics.** [0.6] Ablating the two actor-critic features costs more AUROC than ablating
+  the pixel-statistic features.
+
+- **P10 — Arm B is not better calibrated than Arm A.** [0.55] Held-out ECE of B is not
+  lower than A's by more than 0.02. Ranking and calibration are tracked separately here for
+  the same reason as P3 vs P4.
+
+**Permutation control, pre-committed.** Labels shuffled within each step index destroy
+content while preserving the clock. Arm A must be unchanged; Arm B must collapse to Arm A.
+If B retains an advantage under the shuffle, the fit leaked the clock and **every P8–P10
+number is void and reported as void**, not quietly refitted.
