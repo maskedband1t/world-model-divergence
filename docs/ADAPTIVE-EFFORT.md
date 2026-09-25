@@ -210,3 +210,22 @@ robots and the handoff decision is the commercial product. **That assumption com
 public job postings and the shape of the field, not from any verified source.** It is a
 prior. Nothing in this spec should be read as a claim about how any particular company
 operates, and the bench must not inherit it as fact.
+
+### 4. Which pairing regime is the bench in? Check, do not assume
+
+Added 2026-09-25. An audit of 88 arm pairs in the sibling programme found the failure-cost
+asymmetry is **a property of embodied episodes, not of the decision layer**. On a
+decision-level bench with no physics, a miss cost 10.2 s against 11.1 s for a success —
+failing costs no time, so pairing barely moves the numbers. On embodied benches the same
+comparison ran 43 s unpaired against 24 s paired.
+
+So constraint 3 bites hard or barely, depending on the bench, and seat 1's is decision-level
+in parts and embodied in others.
+
+> **Run first, before any arm comparison:** within each arm, compare episode time on handled
+> against missed episodes. That single check says which regime the bench is in. Two lines of
+> analysis, and it decides whether an unpaired number is merely imprecise or actively
+> backwards.
+
+The audit also found genuine sign flips in the embodied set — one comparison read 10 s slower
+unpaired and 2 s faster paired. Direction, not just magnitude, can invert.
