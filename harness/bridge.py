@@ -44,7 +44,7 @@ class Loaded:
     make_env: "object"
 
 
-def load_pretrained(game: str, diamond_root: Path, device: torch.device, sticky: float = 0.0):
+def load_pretrained(game: str, diamond_root: Path, device: torch.device):
     """Download the Atari-100k checkpoint for `game` and build agent + env factory.
 
     Mirrors src/play.py::prepare_play_mode but never prompts and lets us set
@@ -70,7 +70,7 @@ def load_pretrained(game: str, diamond_root: Path, device: torch.device, sticky:
     # must live under one root before anything is resolved.
     cfg = OmegaConf.create({"agent": cfg_agent, "env": cfg_env})
 
-    def make_env(num_envs: int = 1):
+    def make_env(num_envs: int = 1, sticky: float = 0.0):
         return make_atari_env_sticky(
             id=cfg.env.test.id,
             num_envs=num_envs,
@@ -160,14 +160,19 @@ def rollout_real(
     steps: int,
     seed: int,
     actions: Optional[Tensor] = None,
+    sticky: float = 0.0,
 ) -> RealRollout:
     """Run the real emulator for `steps`.
 
-    actions=None -> the pretrained policy chooses (this is what puts us on-distribution).
-    actions given -> replay that exact sequence (this is how the control run and the
-    world model are driven off ONE shared action sequence).
+    actions=None -> the pretrained policy chooses, closed-loop. Use this ONCE, as a
+                    pilot, to produce an on-distribution action sequence.
+    actions given -> open-loop replay of that exact sequence.
+
+    Every comparison in this repo replays a pilot sequence open-loop. A closed-loop
+    arm compared against an open-loop arm would differ by the policy's ability to
+    react as well as by the effect under test -- see PREDICTIONS.md amendment 3.
     """
-    env = loaded.make_env(1)
+    env = loaded.make_env(1, sticky=sticky)
     obs, _ = env.reset(seed=seed)
     hx = torch.zeros(1, loaded.agent.actor_critic.lstm_dim, device=loaded.device)
     cx = torch.zeros_like(hx)
@@ -182,8 +187,6 @@ def rollout_real(
             act = torch.distributions.Categorical(logits=logits).sample()
         else:
             act = actions[t].view(1).to(loaded.device)
-            # keep the LSTM warm so a later actions=None call from the same state matches
-            _, _, (hx, cx) = loaded.agent.actor_critic.predict_act_value(obs, (hx, cx))
 
         obs, _, end, trunc, _ = env.step(act)
         obs_log.append(obs[0].cpu().clone())
@@ -223,6 +226,11 @@ def rollout_world_model(
 
     # s_churn is 0 by default, so the initial latent is the only source of randomness.
     # Seeding here is what makes N independent samples differ.
+    #
+    # NOTE: DiffusionSampler.sample calls torch.randn with no generator argument, so the
+    # global RNG is the only lever available. This function therefore has a side effect
+    # on global torch RNG state -- callers must finish every real-env rollout BEFORE
+    # calling this, or the real rollouts stop being reproducible from their own seeds.
     torch.manual_seed(seed)
 
     obs_buf = init_obs.unsqueeze(0).to(loaded.device).clone()   # (1, T, 3, 64, 64)

@@ -184,3 +184,54 @@ much the outcome depends on the initial latent. If P3 fails at chance, the readi
 "What would make me wrong" stands and sharpens — the initial latent would be washing out
 rather than carrying information about dynamics uncertainty, and an external probe or a
 non-zero `s_churn` sweep becomes the follow-up.
+
+### 2026-09-24 — amendment 3: the control run had a confound, found before any run
+
+The original control compared a **closed-loop** arm (policy acting, reacting to sticky
+deviations) against an **open-loop** arm (replaying the first arm's actions). Those two
+differ by the policy's ability to react as well as by the sticky noise under test, so
+the floor would have been inflated by an effect that has nothing to do with "how far
+apart two true realisations sit."
+
+**Corrected design.** A pilot rollout (policy acting, sticky **off**) produces one action
+sequence. Both control arms replay that sequence **open-loop** with sticky **on**, at
+different seeds. They now differ only by the ALE's sticky draws.
+
+**Side benefit that narrows amendment 1's stated cost.** The pilot uses the same seed as
+the divergence run, so the floor and the divergence it calibrates are measured on the
+**same action sequence**. Only the sticky setting still differs.
+
+### 2026-09-24 — amendment 4: the analysis is frozen before the data exists
+
+`harness/analysis.py` was written and committed before a single run had been executed.
+Every number reported in the README is produced by it: the floor percentile, the
+divergence step, AUROC, held-out ECE, and the equal-budget gate comparison. Freezing it
+first is what makes the predictions above falsifiable rather than decorative — the
+analysis cannot be reshaped once the data is in view.
+
+It ships with a self-test on synthetic data, including a **negative control**: a spread
+signal that is pure noise must return AUROC ≈ .5. It returns .507. The pipeline does not
+manufacture a positive from noise.
+
+**A limitation recorded now, not after seeing results.** LPIPS with AlexNet is applied to
+64x64 frames, where its deepest features are only a few pixels across. It is used because
+it is the standard perceptual metric, not because it is well suited to this resolution.
+Raw L2 is reported beside it in every table for exactly this reason, and a disagreement
+between them is a finding and not a nuisance to be resolved in favour of whichever is
+more convenient.
+
+### 2026-09-24 — amendment 5: the most likely way P3 fails, named in advance
+
+P3 predicts that sample spread carries signal about divergence. The reading already given
+for its failure is that spread tracks texture noise. A second and more interesting failure
+is now named before it can be discovered and rationalised:
+
+**The samples may be confidently wrong in the same way.** Once a rollout has left the real
+trajectory, every sample can agree closely with every other sample while all of them agree
+with reality not at all — low spread, high divergence. Sample agreement measures agreement
+among samples, which is only a proxy for truth while the model is still tracking.
+
+If that is what the data shows, it is the world-model analogue of the owned copy in the
+sibling repo: blind off its own distribution and increasingly sure about it. That would be
+a result, not a failed experiment, and it would argue that a trust signal has to come from
+somewhere other than the model's own agreement with itself.

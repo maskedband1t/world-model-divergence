@@ -54,35 +54,43 @@ def write(path: Path, header: dict, rows: list[dict]) -> None:
 # --------------------------------------------------------------------------------------
 
 def cmd_control(args: argparse.Namespace) -> None:
-    """Two REAL rollouts under one action sequence, with sticky actions on.
+    """The noise floor: two REAL rollouts of ONE pilot action sequence, sticky on.
 
-    *NoFrameskip-v4 is deterministic, so with sticky actions off these two rollouts
-    would be bit-identical and the floor would be exactly zero. repeat_action_probability
-    = 0.25 is the ALE standard and gives the honest question: how far apart do two
-    physically plausible realisations of the same action sequence sit while BOTH are true?
+    *NoFrameskip-v4 is deterministic, so with sticky actions off two real rollouts of the
+    same sequence are bit-identical and the floor would be exactly zero.
+    repeat_action_probability = 0.25 is the ALE standard (Machado et al. 2018).
+
+    Both arms replay the pilot OPEN-LOOP. An earlier version had arm A acting closed-loop;
+    that floor measured the policy's ability to react as well as the sticky noise, which
+    inflates it. See PREDICTIONS.md amendment 3.
     """
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    loaded = load_pretrained(args.game, Path(args.diamond_root), device, sticky=args.sticky)
+    loaded = load_pretrained(args.game, Path(args.diamond_root), device)
     dist = Distance(device, use_lpips=not args.no_lpips)
 
     rows: list[dict] = []
+    skipped = 0
     for seed in range(args.seeds):
-        # run A: policy chooses, sticky actions may override -> record what the ALE did
-        a = rollout_real(loaded, steps=args.burnin + args.horizon, seed=1000 + seed)
-        if a.act.numel() < args.burnin + args.horizon:
-            print(f"[skip] seed {seed}: episode ended at {a.ended_at}")
+        # pilot: policy acts, deterministic env. This is the SAME sequence the
+        # divergence run uses, so the floor and the thing it calibrates are matched.
+        pilot = rollout_real(loaded, steps=args.burnin + args.horizon, seed=1000 + seed, sticky=0.0)
+        if pilot.act.numel() < args.burnin + args.horizon:
+            print(f"[skip] seed {seed}: pilot ended at {pilot.ended_at}")
+            skipped += 1
             continue
-        # run B: replay A's action sequence from a different seed
-        b = rollout_real(loaded, steps=args.burnin + args.horizon, seed=2000 + seed, actions=a.act)
-        if b.act.numel() < args.burnin + args.horizon:
-            print(f"[skip] seed {seed}: control episode ended at {b.ended_at}")
+
+        a = rollout_real(loaded, steps=args.burnin + args.horizon, seed=3000 + seed,
+                         actions=pilot.act, sticky=args.sticky)
+        b = rollout_real(loaded, steps=args.burnin + args.horizon, seed=4000 + seed,
+                         actions=pilot.act, sticky=args.sticky)
+        if min(a.act.numel(), b.act.numel()) < args.burnin + args.horizon:
+            print(f"[skip] seed {seed}: a control arm ended early")
+            skipped += 1
             continue
 
         t0 = args.burnin
-        fa = a.obs[t0 + 1 : t0 + 1 + args.horizon]
-        fb = b.obs[t0 + 1 : t0 + 1 + args.horizon]
-        l2, lp = dist(fa, fb)
-
+        l2, lp = dist(a.obs[t0 + 1 : t0 + 1 + args.horizon],
+                      b.obs[t0 + 1 : t0 + 1 + args.horizon])
         for k in range(len(l2)):
             rows.append({
                 "run": "control", "game": args.game, "seed": seed, "step": k + 1,
@@ -94,6 +102,7 @@ def cmd_control(args: argparse.Namespace) -> None:
         Path(args.out) / f"control_{args.game}.jsonl",
         {"mode": "control", "game": args.game, "sticky": args.sticky,
          "burnin": args.burnin, "horizon": args.horizon, "seeds": args.seeds,
+         "seeds_skipped": skipped, "open_loop_both_arms": True,
          **provenance(Path(args.diamond_root))},
         rows,
     )
@@ -106,15 +115,19 @@ def cmd_diverge(args: argparse.Namespace) -> None:
     distance below is model error with no environment noise mixed in.
     """
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    loaded = load_pretrained(args.game, Path(args.diamond_root), device, sticky=0.0)
+    loaded = load_pretrained(args.game, Path(args.diamond_root), device)
     dist = Distance(device, use_lpips=not args.no_lpips)
     T = loaded.num_steps_conditioning
 
     rows: list[dict] = []
+    skipped = 0
     for seed in range(args.seeds):
-        real = rollout_real(loaded, steps=args.burnin + args.horizon, seed=1000 + seed)
+        # seed 1000+seed matches the control run's pilot, so both are measured on the
+        # same action sequence. Real rollout FIRST: rollout_world_model reseeds global RNG.
+        real = rollout_real(loaded, steps=args.burnin + args.horizon, seed=1000 + seed, sticky=0.0)
         if real.act.numel() < args.burnin + args.horizon:
             print(f"[skip] seed {seed}: episode ended at {real.ended_at}")
+            skipped += 1
             continue
 
         t0 = args.burnin
@@ -158,7 +171,7 @@ def cmd_diverge(args: argparse.Namespace) -> None:
         {"mode": "diverge", "game": args.game, "sticky": 0.0,
          "burnin": args.burnin, "horizon": args.horizon, "seeds": args.seeds,
          "num_samples": args.num_samples, "denoising_steps": args.denoising_steps,
-         "num_steps_conditioning": T,
+         "num_steps_conditioning": T, "seeds_skipped": skipped,
          **provenance(Path(args.diamond_root))},
         rows,
     )
