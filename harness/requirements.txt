@@ -1,0 +1,6 @@
+# Install DIAMOND's own requirements first, in its repo:
+#   pip install -r <diamond-root>/requirements.txt
+# then these:
+lpips>=0.1.4
+ale-py>=0.9          # repeat_action_probability must be accepted by gymnasium.make
+huggingface_hub

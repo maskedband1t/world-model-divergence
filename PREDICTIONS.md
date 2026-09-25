@@ -144,3 +144,43 @@ the number is spent by a governor rather than folded into a loss.
 ## Amendments
 
 *(dated entries only; nothing above is edited)*
+
+### 2026-09-24 — amendment 1: the noise floor needs sticky actions turned on
+
+Found while reading DIAMOND's source before the first run; nothing above is edited.
+
+**What the pre-registration got wrong.** It said the control run would be "two *real*
+emulator rollouts ... differing only by ALE's own stochasticity (sticky actions)."
+DIAMOND trains and evaluates on `*NoFrameskip-v4`, and **v4 has no sticky actions**.
+Two real rollouts from the same seed under the same action sequence are bit-identical,
+so the floor as written would have been exactly zero and every divergence threshold
+built on it would have been meaningless.
+
+**The correction.** The control run explicitly sets
+`repeat_action_probability = 0.25` — the ALE standard (Machado et al. 2018) — for
+**both** real rollouts. The floor then answers the question it was always meant to
+answer: how far apart do two physically plausible realisations of the same action
+sequence sit while **both are still true**?
+
+**What this buys, which the original design did not have.** The divergence run keeps
+sticky actions **off**. The real env is then deterministic, so the world-model-vs-real
+distance contains **no environment noise at all** — every unit of it is model error.
+Attribution is unambiguous, which is stronger than what was pre-registered.
+
+**What it costs, stated plainly.** The floor is measured under a slightly different
+env setting (sticky on) than the divergence it calibrates (sticky off). The floor is
+therefore an upper bound on tolerable distance rather than a matched control. Any
+headline claim that is sensitive to that gap must say so. No prediction P1–P6 changes.
+
+### 2026-09-24 — amendment 2: where the confidence signal actually comes from
+
+DIAMOND's shipped sampler config sets `s_churn: 0.0` and `order: 1`. The reverse
+diffusion is therefore deterministic given its starting latent, and the **only** source
+of variation between two rollouts from identical conditioning is the initial
+`torch.randn` draw.
+
+P3 and P4 are unchanged, but the mechanism is now specific: sample spread measures how
+much the outcome depends on the initial latent. If P3 fails at chance, the reading in
+"What would make me wrong" stands and sharpens — the initial latent would be washing out
+rather than carrying information about dynamics uncertainty, and an external probe or a
+non-zero `s_churn` sweep becomes the follow-up.
