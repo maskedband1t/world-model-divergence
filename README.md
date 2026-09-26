@@ -29,8 +29,22 @@ and against the real emulator as ground truth. The misses stay in the record.
 and dangerous at the other, and the field's fix is always a hand-written detector for which regime it
 is in: a fixed horizon deciding how long a policy may dream, a rule program deciding when a robot asks
 for help, a gripper-event rule deciding which motion may be accelerated. This programme asks whether a
-**calibrated per-step number is the general form of that detector** — general because a number that
-means what it says transfers where a hand-written rule does not. Measured here at the policy–world-model
+**calibrated per-step number is the general form of that detector** — and measures what that is
+worth against the right control. Seat 1 has now answered part of it: a state-dependent test buys
+**+0.100 handled events** over an arm that skips at the *same rate* with no test at all, which
+buys **+0.000**, replicated on two banks. So the detector's *content* earns its place; skipping
+alone does not.
+
+**What the same work did not support, stated here rather than buried.** The original form of this
+claim was that a calibrated number is general *because it transfers where a hand-written rule does
+not*. On that bench it does not survive: a raw, uncalibrated threshold transferred nearly as well
+for **behaviour** (conditional accuracy drifting under .08 across a 53-point base-rate shift), and
+an attempt to show physical thresholds transfer worse produced an interval spanning zero. What
+calibration demonstrably buys there is that the number attached to the gate is roughly **true**
+(half the calibration error off its fit distribution) — which matters for reasoning about the gate
+and composing it with other numbers, not for where it fires.
+
+Measured here at the policy–world-model
 boundary; measured at the human–robot boundary in
 [RLCD](https://github.com/maskedband1t/RLCD).
 
